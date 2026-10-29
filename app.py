@@ -26,17 +26,53 @@ st.write(
 BASE_DIR = Path(__file__).resolve().parent
 
 MOVIES_FILE = BASE_DIR / "tmdb_5000_movies.csv"
-CREDITS_FILE = BASE_DIR / "tmdb_5000_credits.csv"
+
+CREDITS_PART1_FILE = BASE_DIR / "tmdb_5000_credits_part1.csv"
+CREDITS_PART2_FILE = BASE_DIR / "tmdb_5000_credits_part2.csv"
 
 
-# 3. Load both CSV files
+# 3. Load and combine the CSV files
 @st.cache_data
 def load_data():
+    # Check that all expected files exist
+    required_files = [
+        MOVIES_FILE,
+        CREDITS_PART1_FILE,
+        CREDITS_PART2_FILE
+    ]
+
+    for file_path in required_files:
+        if not file_path.is_file():
+            raise FileNotFoundError(
+                f"Dataset file not found: {file_path.name}"
+            )
+
     movies = pd.read_csv(MOVIES_FILE)
-    credits = pd.read_csv(CREDITS_FILE)
+
+    credits_part1 = pd.read_csv(CREDITS_PART1_FILE)
+    credits_part2 = pd.read_csv(CREDITS_PART2_FILE)
+
+    # Combine the two credits parts
+    credits = pd.concat(
+        [credits_part1, credits_part2],
+        ignore_index=True
+    )
 
     # Keep only the credit columns we need
-    credits = credits[["movie_id", "cast", "crew"]]
+    required_credit_columns = ["movie_id", "cast", "crew"]
+
+    missing_columns = [
+        column for column in required_credit_columns
+        if column not in credits.columns
+    ]
+
+    if missing_columns:
+        raise ValueError(
+            "Credits CSV is missing columns: "
+            + ", ".join(missing_columns)
+        )
+
+    credits = credits[required_credit_columns]
 
     # Match credits to movies by movie ID
     movies = movies.merge(
@@ -130,7 +166,7 @@ def build_model():
         get_director
     )
 
-    # Combine all important movie information
+    # Combine important movie information
     def make_tags(row):
         parts = (
             row["genres_list"]
@@ -163,10 +199,11 @@ try:
     with st.spinner("Loading movies and building the AI model..."):
         movies, tfidf_matrix = build_model()
 
-except FileNotFoundError:
-    st.error(
-        "Dataset files are missing. Upload both CSV files "
-        "to the same GitHub folder as app.py."
+except FileNotFoundError as error:
+    st.error(f"Dataset file missing: {error.filename or error}")
+    st.info(
+        "Ensure app.py and all three CSV files are in the "
+        "same GitHub folder."
     )
     st.stop()
 
